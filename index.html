@@ -1,11 +1,689 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Money Project</title>
+    <title>劣化版家計簿 | Simple & Minimal Ledger</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #F8FAFC;
+            color: #0F172A;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 数字の桁揃え（フィンテックUIの基本） */
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+        }
+
+        /* トースト通知アニメーション */
+        @keyframes slideUp {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .toast-enter {
+            animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
 </head>
-<body>
-    
+<body class="min-h-screen flex flex-col">
+
+    <!-- トップナビゲーションバー -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-base font-bold tracking-tight text-slate-900">劣化版家計簿</h1>
+                        <span class="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200/60">MVP</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 hidden sm:block">銀行連携なし・レシート撮影なし・ただ記帳するだけ</p>
+                </div>
+            </div>
+
+            <!-- アクションボタン群 -->
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="loadSampleData()" class="text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg transition shadow-2xs">
+                    サンプル読込
+                </button>
+                <button type="button" onclick="exportCSV()" class="text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg transition shadow-2xs flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span class="hidden sm:inline">CSV出力</span>
+                </button>
+                <button type="button" onclick="confirmClearAll()" class="text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 px-2.5 py-1.5 rounded-lg transition">
+                    全消去
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 全消去確認バナー（confirm()代替） -->
+    <div id="confirm-bar" class="hidden bg-rose-50 border-b border-rose-200">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2 text-sm text-rose-800 font-medium">
+                <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>すべての収支データを完全に削除しますか？（この操作は取り消せません）</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="hideConfirm()" class="text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition">
+                    キャンセル
+                </button>
+                <button type="button" id="confirm-yes-btn" class="text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 px-3.5 py-1.5 rounded-lg shadow-xs transition">
+                    削除する
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- メインコンテナ -->
+    <main class="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 flex-1">
+
+        <!-- 1. KPIサマリーカード -->
+        <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- 現在の残高 -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-500">現在の残高</span>
+                    <span class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="mt-3">
+                    <p id="summary-balance" class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 tabular-nums">¥0</p>
+                </div>
+            </div>
+
+            <!-- 総収入 -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-500">総収入</span>
+                    <span class="w-7 h-7 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="mt-3">
+                    <p id="summary-income" class="text-2xl font-bold tracking-tight text-emerald-600 tabular-nums">¥0</p>
+                </div>
+            </div>
+
+            <!-- 総支出 -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-slate-500">総支出</span>
+                    <span class="w-7 h-7 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 13l-5 5m0 0l-5-5m5 5V6" />
+                        </svg>
+                    </span>
+                </div>
+                <div class="mt-3">
+                    <p id="summary-expense" class="text-2xl font-bold tracking-tight text-slate-900 tabular-nums">¥0</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. クイック記帳フォーム -->
+        <section class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+            <form id="transaction-form" class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-sm font-semibold text-slate-800">収支を記録する</h2>
+                    
+                    <!-- セグメント切り替え（支出 / 収入） -->
+                    <div class="inline-flex p-1 rounded-xl bg-slate-100 border border-slate-200/60" role="group">
+                        <button type="button" id="btn-type-expense" onclick="setTransactionType('expense')" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-slate-900 shadow-xs transition-all">
+                            支出 (-)
+                        </button>
+                        <button type="button" id="btn-type-income" onclick="setTransactionType('income')" class="px-4 py-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-800 transition-all">
+                            収入 (+)
+                        </button>
+                    </div>
+                    <input type="hidden" id="input-type" value="expense">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <!-- 日付 -->
+                    <div class="sm:col-span-3">
+                        <label for="input-date" class="block text-[11px] font-medium text-slate-500 mb-1">日付</label>
+                        <input type="date" id="input-date" required class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition">
+                    </div>
+
+                    <!-- カテゴリ -->
+                    <div class="sm:col-span-3">
+                        <label for="input-category" class="block text-[11px] font-medium text-slate-500 mb-1">カテゴリ</label>
+                        <div class="relative">
+                            <select id="input-category" class="w-full h-10 pl-3 pr-8 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-800 appearance-none focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition"></select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 金額 -->
+                    <div class="sm:col-span-2">
+                        <label for="input-amount" class="block text-[11px] font-medium text-slate-500 mb-1">金額 (円)</label>
+                        <input type="number" id="input-amount" min="1" step="1" placeholder="1200" required class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold tabular-nums text-right focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition">
+                    </div>
+
+                    <!-- メモ -->
+                    <div class="sm:col-span-2">
+                        <label for="input-memo" class="block text-[11px] font-medium text-slate-500 mb-1">メモ</label>
+                        <input type="text" id="input-memo" placeholder="ランチ、電車代..." maxlength="30" class="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition">
+                    </div>
+
+                    <!-- 追加ボタン -->
+                    <div class="sm:col-span-2 flex items-end">
+                        <button type="submit" id="submit-btn" class="w-full h-10 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-semibold rounded-xl shadow-xs transition flex items-center justify-center gap-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                            <span>追加</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <!-- 3. メインコンテンツグリッド（左：履歴リスト / 右：カテゴリ別内訳） -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            <!-- 取引履歴リスト（7カラム） -->
+            <section class="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+                <!-- ヘッダー＆簡易フィルター -->
+                <div class="p-4 sm:px-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-sm font-semibold text-slate-800">取引履歴</h2>
+                        <span id="record-count" class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 tabular-nums">0件</span>
+                    </div>
+
+                    <!-- 絞り込みコントロール -->
+                    <div class="flex items-center gap-2">
+                        <select id="filter-type" onchange="renderAll()" class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-slate-400">
+                            <option value="all">すべて</option>
+                            <option value="expense">支出のみ</option>
+                            <option value="income">収入のみ</option>
+                        </select>
+                        <input type="text" id="filter-search" oninput="renderAll()" placeholder="メモ・費目で検索..." class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 w-36 sm:w-44 focus:bg-white focus:outline-none focus:border-slate-400">
+                    </div>
+                </div>
+
+                <!-- リスト本体 -->
+                <div id="history-list" class="divide-y divide-slate-100 max-h-[460px] overflow-y-auto">
+                    <!-- JSで動的に描画 -->
+                </div>
+
+                <!-- 空状態メッセージ -->
+                <div id="empty-message" class="hidden py-14 px-4 text-center">
+                    <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-600">表示する取引データがありません</p>
+                    <p class="text-xs text-slate-400 mt-1">上のフォームから記録するか、「サンプル読込」をお試しください。</p>
+                </div>
+            </section>
+
+            <!-- カテゴリ別支出グラフ（5カラム） -->
+            <section class="lg:col-span-5 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-slate-800">カテゴリ別支出</h2>
+                    <span id="chart-total-label" class="text-xs font-semibold text-slate-500 tabular-nums">合計: ¥0</span>
+                </div>
+
+                <div id="chart-container" class="space-y-4">
+                    <!-- JSで横棒プログレスバーを描画 -->
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- フッター -->
+    <footer class="max-w-5xl w-full mx-auto px-4 sm:px-6 py-5 text-center sm:text-left flex flex-col sm:flex-row justify-between items-center gap-2 text-xs text-slate-400">
+        <span>データはブラウザ内（localStorage）に自動保存されます。</span>
+        <span>劣化版家計簿 — Stripped-down Personal Ledger</span>
+    </footer>
+
+    <!-- トースト通知コンテナ -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // ==========================================
+        // 定数・カテゴリスタイル定義
+        // ==========================================
+        const STORAGE_KEY = 'minimal_kakeibo_modern_v1';
+
+        const CATEGORY_CONFIG = {
+            expense: [
+                { name: '食費', color: '#F97316', badgeBg: 'bg-orange-50', badgeText: 'text-orange-700', border: 'border-orange-200/70' },
+                { name: '日用品', color: '#0EA5E9', badgeBg: 'bg-sky-50', badgeText: 'text-sky-700', border: 'border-sky-200/70' },
+                { name: '交通費', color: '#6366F1', badgeBg: 'bg-indigo-50', badgeText: 'text-indigo-700', border: 'border-indigo-200/70' },
+                { name: '娯楽', color: '#EC4899', badgeBg: 'bg-pink-50', badgeText: 'text-pink-700', border: 'border-pink-200/70' },
+                { name: '光熱・通信', color: '#EAB308', badgeBg: 'bg-amber-50', badgeText: 'text-amber-700', border: 'border-amber-200/70' },
+                { name: 'その他', color: '#64748B', badgeBg: 'bg-slate-100', badgeText: 'text-slate-700', border: 'border-slate-200/70' }
+            ],
+            income: [
+                { name: '給与', color: '#10B981', badgeBg: 'bg-emerald-50', badgeText: 'text-emerald-700', border: 'border-emerald-200/70' },
+                { name: 'その他', color: '#14B8A6', badgeBg: 'bg-teal-50', badgeText: 'text-teal-700', border: 'border-teal-200/70' }
+            ]
+        };
+
+        // アプリケーション状態
+        let transactions = [];
+
+        // ==========================================
+        // 初期化
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            // 本日の日付を初期設定
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('input-date').value = today;
+
+            // 初期種別（支出）でカテゴリをセットアップ
+            setTransactionType('expense');
+
+            // ローカルストレージから復元
+            loadData();
+            renderAll();
+
+            // フォーム送信イベント
+            document.getElementById('transaction-form').addEventListener('submit', handleAddTransaction);
+        });
+
+        // ==========================================
+        // データ永続化（localStorage）
+        // ==========================================
+        function loadData() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                transactions = raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                console.error('Storage read error:', e);
+                transactions = [];
+                showToast('データの読み込みに失敗しました', 'error');
+            }
+        }
+
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+            } catch (e) {
+                console.error('Storage write error:', e);
+                showToast('ブラウザへの保存に失敗しました', 'error');
+            }
+        }
+
+        // ==========================================
+        // UI操作・イベントハンドラ
+        // ==========================================
+        function setTransactionType(type) {
+            document.getElementById('input-type').value = type;
+
+            const btnExpense = document.getElementById('btn-type-expense');
+            const btnIncome = document.getElementById('btn-type-income');
+            const submitBtn = document.getElementById('submit-btn');
+
+            if (type === 'expense') {
+                btnExpense.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-slate-900 shadow-xs transition-all';
+                btnIncome.className = 'px-4 py-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-800 transition-all';
+                submitBtn.className = 'w-full h-10 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-semibold rounded-xl shadow-xs transition flex items-center justify-center gap-1.5';
+            } else {
+                btnIncome.className = 'px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-emerald-700 shadow-xs transition-all';
+                btnExpense.className = 'px-4 py-1.5 text-xs font-medium rounded-lg text-slate-500 hover:text-slate-800 transition-all';
+                submitBtn.className = 'w-full h-10 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-sm font-semibold rounded-xl shadow-xs transition flex items-center justify-center gap-1.5';
+            }
+
+            // カテゴリの選択肢を更新
+            const categorySelect = document.getElementById('input-category');
+            categorySelect.innerHTML = '';
+            CATEGORY_CONFIG[type].forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat.name;
+                option.textContent = cat.name;
+                categorySelect.appendChild(option);
+            });
+        }
+
+        function handleAddTransaction(e) {
+            e.preventDefault();
+
+            const type = document.getElementById('input-type').value;
+            const date = document.getElementById('input-date').value;
+            const category = document.getElementById('input-category').value;
+            const amount = parseInt(document.getElementById('input-amount').value, 10);
+            const memo = document.getElementById('input-memo').value.trim();
+
+            if (!date || isNaN(amount) || amount <= 0) {
+                showToast('日付と1円以上の金額を入力してください', 'error');
+                return;
+            }
+
+            const newItem = {
+                id: Date.now().toString(36) + Math.random().toString(36).substring(2, 6),
+                type,
+                date,
+                category,
+                amount,
+                memo
+            };
+
+            transactions.push(newItem);
+            // 日付降順（新しい順）にソート
+            transactions.sort((a, b) => b.date.localeCompare(a.date));
+
+            saveData();
+            renderAll();
+
+            // 連続入力しやすいよう金額とメモのみリセット
+            document.getElementById('input-amount').value = '';
+            document.getElementById('input-memo').value = '';
+            document.getElementById('input-amount').focus();
+
+            showToast(`${category}（¥${amount.toLocaleString()}）を記録しました`);
+        }
+
+        function deleteTransaction(id) {
+            transactions = transactions.filter(t => t.id !== id);
+            saveData();
+            renderAll();
+            showToast('取引を削除しました');
+        }
+
+        // サンプルデータの投入
+        function loadSampleData() {
+            const today = new Date();
+            const fmt = (offsetDays) => {
+                const d = new Date(today);
+                d.setDate(d.getDate() - offsetDays);
+                return d.toISOString().split('T')[0];
+            };
+
+            const samples = [
+                { id: 'smp1', type: 'income', date: fmt(10), category: '給与', amount: 280000, memo: '今月分給与' },
+                { id: 'smp2', type: 'expense', date: fmt(8), category: '光熱・通信', amount: 14500, memo: '電気・スマホ代' },
+                { id: 'smp3', type: 'expense', date: fmt(5), category: '食費', amount: 4280, memo: 'スーパーまとめ買い' },
+                { id: 'smp4', type: 'expense', date: fmt(3), category: '交通費', amount: 1840, memo: 'ICカードチャージ' },
+                { id: 'smp5', type: 'expense', date: fmt(2), category: '娯楽', amount: 3500, memo: '映画・カフェ' },
+                { id: 'smp6', type: 'expense', date: fmt(1), category: '日用品', amount: 1620, memo: '洗剤・ティッシュ' },
+                { id: 'smp7', type: 'expense', date: fmt(0), category: '食費', amount: 980, memo: 'ランチ定食' }
+            ];
+
+            transactions = [...samples, ...transactions];
+            transactions.sort((a, b) => b.date.localeCompare(a.date));
+            saveData();
+            renderAll();
+            showToast('サンプルデータを読み込みました');
+        }
+
+        // 全消去確認バー
+        function confirmClearAll() {
+            if (transactions.length === 0) {
+                showToast('削除するデータがありません');
+                return;
+            }
+            const bar = document.getElementById('confirm-bar');
+            bar.classList.remove('hidden');
+            document.getElementById('confirm-yes-btn').onclick = () => {
+                transactions = [];
+                saveData();
+                renderAll();
+                hideConfirm();
+                showToast('すべてのデータを消去しました');
+            };
+        }
+
+        function hideConfirm() {
+            document.getElementById('confirm-bar').classList.add('hidden');
+        }
+
+        // CSV出力
+        function exportCSV() {
+            if (transactions.length === 0) {
+                showToast('出力するデータがありません');
+                return;
+            }
+            const header = '日付,種別,カテゴリ,金額,メモ\n';
+            const rows = transactions.map(t => {
+                const typeText = t.type === 'income' ? '収入' : '支出';
+                const escapedMemo = `"${(t.memo || '').replace(/"/g, '""')}"`;
+                return `${t.date},${typeText},${t.category},${t.amount},${escapedMemo}`;
+            }).join('\n');
+
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, header + rows], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `kakeibo_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+            showToast('CSVファイルをダウンロードしました');
+        }
+
+        // ==========================================
+        // 画面レンダリング
+        // ==========================================
+        function renderAll() {
+            renderSummary();
+            renderHistory();
+            renderChart();
+        }
+
+        // 1. サマリーKPI描画
+        function renderSummary() {
+            let income = 0;
+            let expense = 0;
+
+            transactions.forEach(t => {
+                if (t.type === 'income') income += t.amount;
+                else expense += t.amount;
+            });
+
+            const balance = income - expense;
+            const balanceEl = document.getElementById('summary-balance');
+
+            balanceEl.textContent = `${balance < 0 ? '-' : ''}¥${Math.abs(balance).toLocaleString()}`;
+            balanceEl.className = `text-2xl sm:text-3xl font-bold tracking-tight tabular-nums ${balance < 0 ? 'text-rose-600' : 'text-slate-900'}`;
+
+            document.getElementById('summary-income').textContent = `¥${income.toLocaleString()}`;
+            document.getElementById('summary-expense').textContent = `¥${expense.toLocaleString()}`;
+        }
+
+        // 2. 取引履歴リスト描画
+        function renderHistory() {
+            const listEl = document.getElementById('history-list');
+            const emptyEl = document.getElementById('empty-message');
+            const countEl = document.getElementById('record-count');
+
+            const filterType = document.getElementById('filter-type').value;
+            const keyword = document.getElementById('filter-search').value.trim().toLowerCase();
+
+            const filtered = transactions.filter(t => {
+                if (filterType !== 'all' && t.type !== filterType) return false;
+                if (keyword) {
+                    const matchCategory = t.category.toLowerCase().includes(keyword);
+                    const matchMemo = (t.memo || '').toLowerCase().includes(keyword);
+                    if (!matchCategory && !matchMemo) return false;
+                }
+                return true;
+            });
+
+            countEl.textContent = `${filtered.length}件`;
+            listEl.innerHTML = '';
+
+            if (filtered.length === 0) {
+                emptyEl.classList.remove('hidden');
+                return;
+            }
+            emptyEl.classList.add('hidden');
+
+            filtered.forEach(t => {
+                const style = getCategoryStyle(t.type, t.category);
+                const isIncome = t.type === 'income';
+                const sign = isIncome ? '+' : '-';
+                const amountColor = isIncome ? 'text-emerald-600' : 'text-slate-900';
+
+                const row = document.createElement('div');
+                row.className = 'px-4 sm:px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition group';
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border shrink-0 ${style.badgeBg} ${style.badgeText} ${style.border}">
+                            ${escapeHTML(t.category)}
+                        </span>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-slate-800 truncate">
+                                ${t.memo ? escapeHTML(t.memo) : `<span class="text-slate-400 font-normal">${escapeHTML(t.category)}</span>`}
+                            </p>
+                            <p class="text-[11px] text-slate-400 tabular-nums mt-0.5">${escapeHTML(t.date)}</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="text-sm font-semibold tabular-nums ${amountColor}">
+                            ${sign}¥${t.amount.toLocaleString()}
+                        </span>
+                        <button type="button" onclick="deleteTransaction('${t.id}')" title="削除" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(row);
+            });
+        }
+
+        // 3. カテゴリ別支出バー描画
+        function renderChart() {
+            const container = document.getElementById('chart-container');
+            const totalLabel = document.getElementById('chart-total-label');
+            container.innerHTML = '';
+
+            // 支出カテゴリごとに集計
+            const totals = {};
+            CATEGORY_CONFIG.expense.forEach(c => totals[c.name] = 0);
+
+            let totalExpense = 0;
+            transactions.forEach(t => {
+                if (t.type === 'expense') {
+                    totals[t.category] = (totals[t.category] || 0) + t.amount;
+                    totalExpense += t.amount;
+                }
+            });
+
+            totalLabel.textContent = `合計: ¥${totalExpense.toLocaleString()}`;
+
+            if (totalExpense === 0) {
+                container.innerHTML = `
+                    <div class="py-10 text-center">
+                        <p class="text-xs text-slate-400">支出データが記録されると<br>カテゴリ別の割合が表示されます</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 金額の大きい順に並べる
+            const sorted = CATEGORY_CONFIG.expense
+                .map(c => ({ ...c, amount: totals[c.name] || 0 }))
+                .sort((a, b) => b.amount - a.amount);
+
+            sorted.forEach(item => {
+                const pct = totalExpense > 0 ? Math.round((item.amount / totalExpense) * 100) : 0;
+
+                const block = document.createElement('div');
+                block.className = 'space-y-1.5';
+                block.innerHTML = `
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${item.color};"></span>
+                            <span class="font-medium text-slate-700">${escapeHTML(item.name)}</span>
+                        </div>
+                        <div class="tabular-nums text-slate-600">
+                            <span class="font-semibold text-slate-900">¥${item.amount.toLocaleString()}</span>
+                            <span class="text-slate-400 ml-1">(${pct}%)</span>
+                        </div>
+                    </div>
+                    <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-300" style="width: ${pct}%; background-color: ${item.color};"></div>
+                    </div>
+                `;
+                container.appendChild(block);
+            });
+        }
+
+        // ==========================================
+        // ユーティリティ関数
+        // ==========================================
+        function getCategoryStyle(type, categoryName) {
+            const list = CATEGORY_CONFIG[type] || [];
+            return list.find(c => c.name === categoryName) || {
+                color: '#64748B',
+                badgeBg: 'bg-slate-100',
+                badgeText: 'text-slate-700',
+                border: 'border-slate-200'
+            };
+        }
+
+        function showToast(message, type = 'default') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgClass = type === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 text-white';
+
+            toast.className = `${bgClass} text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 toast-enter`;
+            toast.textContent = message;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.2s ease';
+                setTimeout(() => toast.remove(), 200);
+            }, 2600);
+        }
+
+        function escapeHTML(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+    </script>
 </body>
 </html>
